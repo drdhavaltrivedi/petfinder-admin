@@ -10,6 +10,7 @@ import { invalidate, useApi } from "@/lib/query";
 
 interface P { latest: string; min: string; url: string }
 interface Cfg { ios: P; android: P; message: string; updatedAt: number | null; updatedBy: string; lastNotifiedAt: number | null; audience: { ios: number; android: number; other: number } }
+interface Rem { users: number; devices: number; optedOut: number; withLocation: number; lastSentAt: number | null; cooldownDays: number }
 type Form = { latest: string; required: boolean; url: string; prevMin: string };
 
 const PLAY = "https://play.google.com/store/apps/details?id=com.brilworks.petfinder";
@@ -44,6 +45,10 @@ export default function AppUpdatesPage() {
   const toast = useToast();
   const { bundle } = useBundle();
   const { data, error, reload } = useApi<Cfg>("/api/admin/app-version", 30_000);
+  const rem = useApi<Rem>("/api/admin/location-reminder", 5 * 60_000);
+  const [remTest, setRemTest] = useState("");
+  const [remTyped, setRemTyped] = useState("");
+  const [remBusy, setRemBusy] = useState(false);
   const [ios, setIos] = useState<Form | null>(null);
   const [android, setAndroid] = useState<Form | null>(null);
   const [message, setMessage] = useState("");
@@ -102,6 +107,22 @@ export default function AppUpdatesPage() {
     finally { setPushing(false); }
   }
 
+  const remUser = (() => {
+    const t = remTest.trim().toLowerCase();
+    return t.length < 3 || !bundle ? null : bundle.users.find((u) => u[1].toLowerCase() === t || u[0] === remTest.trim()) ?? null;
+  })();
+  async function sendReminder(test: boolean) {
+    setRemBusy(true); setErr(null);
+    try {
+      const r = await api<{ devices: number; sent: number; failed: number }>("/api/admin/location-reminder", {
+        method: "POST", body: JSON.stringify(test ? { testUid: remUser?.[0] } : { confirm: remTyped }),
+      });
+      toast("ok", `${test ? "Test" : "Reminder"} sent to ${r.sent}/${r.devices} devices${r.failed ? ` (${r.failed} failed)` : ""}.`);
+      setRemTyped(""); invalidate("/api/admin/location-reminder"); rem.reload();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setRemBusy(false); }
+  }
+
   const count = audience === "all" ? data.audience.ios + data.audience.android + data.audience.other : data.audience[audience];
 
   return (
@@ -141,6 +162,23 @@ export default function AppUpdatesPage() {
           <span className="text-sm text-muted tabular-nums">{count.toLocaleString()} devices</span>
           <input className={`${input} max-w-40`} placeholder='Type SEND to enable' value={typed} onChange={(e) => setTyped(e.target.value)} />
           <button className={btnDanger} disabled={typed !== "SEND" || pushing} onClick={() => push(false)}>{pushing ? "Sending…" : "Send to users"}</button>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+        <h2 className="font-semibold">Ask users to share their location</h2>
+        <p className="text-xs text-muted">Sends &ldquo;See pets near you. Share your location to discover pets nearby.&rdquo; to users with no saved location. People who turned notifications off are skipped. Send it only after the new app version is live, because older versions have no way to share a location. One reminder per {rem.data?.cooldownDays ?? 7} days.</p>
+        {rem.error && <ErrorBox message={`Could not load the audience: ${rem.error}`} onRetry={rem.reload} />}
+        {rem.data ? (
+          <p className="text-sm tabular-nums"><b>{rem.data.users.toLocaleString()}</b> users · <b>{rem.data.devices.toLocaleString()}</b> devices will receive it. <span className="text-muted">{rem.data.withLocation.toLocaleString()} already shared a location; {rem.data.optedOut.toLocaleString()} turned notifications off. {rem.data.lastSentAt ? `Last sent ${fmtMs(rem.data.lastSentAt)}.` : "Never sent."}</span></p>
+        ) : !rem.error && <Skeleton className="h-5 w-72" />}
+        <div className="flex flex-wrap items-center gap-2">
+          <input className={`${input} max-w-72`} placeholder="Test: a user's exact email or uid" value={remTest} onChange={(e) => setRemTest(e.target.value)} />
+          <button className={btnGhost} disabled={!remUser || remBusy} onClick={() => sendReminder(true)}>Send test to this user</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <input className={`${input} max-w-40`} placeholder="Type SEND to enable" value={remTyped} onChange={(e) => setRemTyped(e.target.value)} />
+          <button className={btnDanger} disabled={remTyped !== "SEND" || remBusy || !rem.data?.devices} onClick={() => sendReminder(false)}>{remBusy ? "Sending…" : "Send reminder"}</button>
         </div>
       </section>
 
