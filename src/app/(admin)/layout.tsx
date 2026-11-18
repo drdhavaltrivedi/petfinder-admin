@@ -20,8 +20,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     <>
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-          <Link href="/posts" className="font-semibold">🐾 PetFinder Admin</Link>
-          <Link href="/posts/new" className="text-sm text-slate-600 hover:text-slate-900">New post</Link>
+          <Link href="/dashboard" className="font-semibold">🐾 PetFinder Admin</Link>
+          <nav className="flex gap-3 text-sm text-slate-600">
+            {[["/dashboard", "Dashboard"], ["/users", "Users"], ["/pets", "Pets"], ["/matches", "Connect"], ["/posts", "Posts"]].map(([h, l]) => (
+              <Link key={h} href={h} className="hover:text-slate-900">{l}</Link>
+            ))}
+          </nav>
           <span className="ml-auto hidden text-xs text-slate-500 sm:block">{user?.email}</span>
           <button onClick={logout} className={btnGhost}>Sign out</button>
         </div>

@@ -16,7 +16,7 @@ export default function LoginPage() {
   const missing = missingConfig();
 
   useEffect(() => {
-    if (status === "admin") router.replace("/posts");
+    if (status === "admin") router.replace("/dashboard");
   }, [status, router]);
 
   async function submit(e: React.FormEvent) {
