@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Link2, Menu, Moon, Newspaper, PawPrint, Sun, Users, LogOut, X } from "lucide-react";
+import { LayoutDashboard, Link2, Menu, Moon, Newspaper, PawPrint, Smartphone, Sun, Users, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/pets", label: "Pets", icon: PawPrint },
   { href: "/matches", label: "Connect", icon: Link2 },
   { href: "/posts", label: "Posts", icon: Newspaper },
+  { href: "/app-updates", label: "App updates", icon: Smartphone },
 ];
 
 function ThemeToggle() {
