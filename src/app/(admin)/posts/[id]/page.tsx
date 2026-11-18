@@ -59,32 +59,32 @@ export default function PostDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/posts" className="text-sm text-slate-500 hover:underline">← All posts</Link>
+      <Link href="/posts" className="text-sm text-muted hover:underline">← All posts</Link>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={post.photo_url} alt="" className="w-full rounded-2xl bg-slate-200 object-cover" />
+        <img src={post.photo_url} alt="" className="w-full rounded-2xl bg-surface-2 object-cover" />
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Avatar url={author?.photo_url} name={author?.display_name} />
             <div>
               <div className="text-sm font-semibold">{author?.display_name ?? "Unknown author"}</div>
-              <div className="text-xs text-slate-500">{fmtDate(post.created_at)}</div>
+              <div className="text-xs text-muted">{fmtDate(post.created_at)}</div>
             </div>
-            <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs">{post.category}</span>
+            <span className="ml-auto rounded-full bg-surface-2 px-2 py-0.5 text-xs">{post.category}</span>
           </div>
           <p className="whitespace-pre-wrap break-words text-sm">{post.caption}</p>
           <dl className="grid grid-cols-3 gap-2 text-center text-sm">
-            <div className="rounded-lg bg-white p-2 border border-slate-200"><dt className="text-xs text-slate-500">Likes</dt><dd className="font-semibold">{post.likes_count}</dd></div>
-            <div className="rounded-lg bg-white p-2 border border-slate-200"><dt className="text-xs text-slate-500">Comments</dt><dd className="font-semibold">{post.comments_count}</dd></div>
-            <div className={`rounded-lg p-2 border ${post.report_count > 0 ? "border-red-300 bg-red-50 text-red-800" : "border-slate-200 bg-white"}`}><dt className="text-xs">Reports</dt><dd className="font-semibold">{post.report_count}</dd></div>
+            <div className="rounded-lg bg-surface p-2 border border-border"><dt className="text-xs text-muted">Likes</dt><dd className="font-semibold">{post.likes_count}</dd></div>
+            <div className="rounded-lg bg-surface p-2 border border-border"><dt className="text-xs text-muted">Comments</dt><dd className="font-semibold">{post.comments_count}</dd></div>
+            <div className={`rounded-lg p-2 border ${post.report_count > 0 ? "border-danger/40 bg-danger/10 text-danger" : "border-border bg-surface"}`}><dt className="text-xs">Reports</dt><dd className="font-semibold">{post.report_count}</dd></div>
           </dl>
           {post.reported_users.length > 0 && (
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-muted">
               Reported by: {post.reported_users.map((r) => authors[r.path]?.display_name ?? r.id).join(", ")}
             </p>
           )}
-          <p className="text-xs text-slate-500">Updated {fmtDate(post.updated_at)}</p>
+          <p className="text-xs text-muted">Updated {fmtDate(post.updated_at)}</p>
 
           {deleteErr && <ErrorBox message={deleteErr} />}
           <div className="flex gap-3">
@@ -103,10 +103,10 @@ export default function PostDetailPage() {
           {comments?.map((c) => {
             const u = c.user ? authors[c.user.path] : null;
             return (
-              <li key={c.id} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-3">
+              <li key={c.id} className="flex gap-3 rounded-lg border border-border bg-surface p-3">
                 <Avatar url={u?.photo_url} name={u?.display_name} />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium">{u?.display_name ?? "Unknown user"} <span className="ml-2 text-xs font-normal text-slate-500">{fmtDate(c.created_at)}</span></div>
+                  <div className="text-sm font-medium">{u?.display_name ?? "Unknown user"} <span className="ml-2 text-xs font-normal text-muted">{fmtDate(c.created_at)}</span></div>
                   <p className="whitespace-pre-wrap break-words text-sm">{c.comment}</p>
                 </div>
               </li>
@@ -117,9 +117,9 @@ export default function PostDetailPage() {
 
       {confirming && (
         <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl bg-surface p-5">
             <h3 className="font-semibold">Delete this post?</h3>
-            <p className="text-sm text-slate-600">This permanently removes the post document. It cannot be undone.</p>
+            <p className="text-sm text-muted">This permanently removes the post document. It cannot be undone.</p>
             {deleteErr && <ErrorBox message={deleteErr} />}
             <div className="flex justify-end gap-3">
               <button className={btnGhost} onClick={() => setConfirming(false)} disabled={deleting}>Cancel</button>

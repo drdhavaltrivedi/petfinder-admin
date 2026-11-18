@@ -3,9 +3,20 @@ import { HttpError, adminAuth, adminDb, handle, requireAdmin } from "@/lib/serve
 type Ctx = { params: Promise<{ uid: string }> };
 const iso = (t: unknown) => (t && typeof (t as { toMillis?: unknown }).toMillis === "function" ? (t as { toMillis(): number }).toMillis() : null);
 
+const cache = new Map<string, { at: number; data: unknown }>();
+const TTL = 5 * 60_000;
+
 export const GET = handle(async (req, ctx: unknown) => {
   await requireAdmin(req);
   const { uid } = await (ctx as Ctx).params;
+  const hit = cache.get(uid);
+  if (hit && Date.now() - hit.at < TTL && !new URL(req.url).searchParams.has("fresh")) return hit.data;
+  const data = await load(uid);
+  cache.set(uid, { at: Date.now(), data });
+  return data;
+});
+
+async function load(uid: string) {
   const db = adminDb();
   const ref = db.doc(`Users/${uid}`);
   const [authUser, doc] = await Promise.all([
@@ -51,4 +62,4 @@ export const GET = handle(async (req, ctx: unknown) => {
       ...received.docs.map((d) => ({ id: d.id, direction: "received", status: d.get("status"), at: iso(d.get("requested_at")), petId: d.get("pet_id")?.id ?? "" })),
     ],
   };
-});
+}

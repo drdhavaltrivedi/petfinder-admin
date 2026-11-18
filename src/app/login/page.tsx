@@ -34,7 +34,7 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto grid min-h-screen max-w-sm place-items-center px-4">
-      <form onSubmit={submit} className="w-full space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <form onSubmit={submit} className="w-full space-y-4 rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <h1 className="text-xl font-semibold">PetFinder Admin</h1>
         {missing.length > 0 && <ErrorBox message={`Missing environment variables: ${missing.join(", ")}`} />}
         {notice && <ErrorBox message={notice} />}

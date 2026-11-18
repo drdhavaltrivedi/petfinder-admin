@@ -1,87 +1,56 @@
 "use client";
 
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import { Stat } from "@/components/charts";
-import { Avatar, ErrorBox, Spinner, btnPrimary } from "@/components/ui";
-import { api, fmtMs } from "@/lib/api";
+import { Avatar, Badge, ErrorBox, PageHeader, Skeleton, btnPrimary } from "@/components/ui";
+import { fmtMs } from "@/lib/api";
+import { useApi } from "@/lib/query";
+import type { Detail } from "../quick";
 
-interface Detail {
-  uid: string; email: string; name: string; photo: string; address: string; gender: string; favoritePet: string;
-  location: { lat: number; lng: number } | null; created: number | null; lastSignIn: number | null; lastRefresh: number | null;
-  disabled: boolean; providers: string[]; reportCount: number;
-  counts: { likes: number; chats: number; pushTokens: number };
-  pets: { id: string; name: string; category: string; status: string; photo: string }[];
-  adoptionRequests: { id: string; direction: string; status: string; at: number | null; petId: string }[];
-}
+const Row = ({ k, v }: { k: string; v: React.ReactNode }) => <div><dt className="text-xs text-muted">{k}</dt><dd className="text-sm">{v}</dd></div>;
 
 export default function UserDetailPage() {
   const { uid } = useParams<{ uid: string }>();
-  const [u, setU] = useState<Detail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: u, error, reload } = useApi<Detail>(`/api/admin/users/${uid}`);
 
-  useEffect(() => {
-    api<Detail>(`/api/admin/users/${uid}`).then(setU).catch((e) => setError(`Failed to load user: ${(e as Error).message}`));
-  }, [uid]);
-
-  if (error) return <ErrorBox message={error} />;
-  if (!u) return <Spinner />;
+  if (error) return <ErrorBox message={`Failed to load user: ${error}`} onRetry={reload} />;
+  if (!u) return <div className="space-y-4"><Skeleton className="h-10 w-64" /><div className="grid grid-cols-4 gap-3"><Skeleton className="h-20" /><Skeleton className="h-20" /><Skeleton className="h-20" /><Skeleton className="h-20" /></div><Skeleton className="h-48" /></div>;
 
   return (
     <div className="space-y-6">
-      <Link href="/users" className="text-sm text-slate-500 hover:underline">← All users</Link>
-      <div className="flex flex-wrap items-center gap-4">
-        <Avatar url={u.photo} name={u.name || u.email} />
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">{u.name || "(no name)"}</h1>
-          <div className="text-sm text-slate-500">{u.email} · <span className="font-mono text-xs">{u.uid}</span></div>
-        </div>
-        <Link href={`/matches?a=${u.uid}`} className={`${btnPrimary} ml-auto`}>Connect with another user</Link>
-      </div>
-
+      <Link href="/users" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ArrowLeft className="h-4 w-4" />All users</Link>
+      <PageHeader
+        title={<span className="flex items-center gap-3"><Avatar url={u.photo} name={u.name || u.email} size={44} />{u.name || "(no name)"}</span>}
+        sub={<>{u.email} · <span className="font-mono text-xs">{u.uid}</span></>}
+        actions={<><button className="text-sm text-accent underline" onClick={reload}>Reload</button><Link href={`/matches?a=${u.uid}`} className={btnPrimary}>Connect with another user</Link></>}
+      />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Pets listed" value={u.pets.length} />
-        <Stat label="Likes given" value={u.counts.likes} />
-        <Stat label="Chats" value={u.counts.chats} />
-        <Stat label="Push devices" value={u.counts.pushTokens} />
+        <Stat label="Pets listed" value={u.pets.length} /><Stat label="Likes given" value={u.counts.likes} /><Stat label="Chats" value={u.counts.chats} /><Stat label="Push devices" value={u.counts.pushTokens} />
       </div>
-
-      <dl className="grid gap-x-8 gap-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-2">
-        <div><dt className="text-xs text-slate-500">Signed up</dt><dd>{fmtMs(u.created)}</dd></div>
-        <div><dt className="text-xs text-slate-500">Last sign-in</dt><dd>{fmtMs(u.lastSignIn)}</dd></div>
-        <div><dt className="text-xs text-slate-500">Last token refresh (≈ last active)</dt><dd>{fmtMs(u.lastRefresh)}</dd></div>
-        <div><dt className="text-xs text-slate-500">Sign-in methods</dt><dd>{u.providers.join(", ") || "—"}</dd></div>
-        <div><dt className="text-xs text-slate-500">Address</dt><dd>{u.address || "—"}</dd></div>
-        <div><dt className="text-xs text-slate-500">Location</dt><dd>{u.location ? `${u.location.lat.toFixed(4)}, ${u.location.lng.toFixed(4)}` : "—"}</dd></div>
-        <div><dt className="text-xs text-slate-500">Gender / favourite pet</dt><dd>{u.gender || "—"} / {u.favoritePet || "—"}</dd></div>
-        <div><dt className="text-xs text-slate-500">Reports against user</dt><dd>{u.reportCount}{u.disabled && " · account disabled"}</dd></div>
+      <dl className="grid gap-x-8 gap-y-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
+        <Row k="Signed up" v={fmtMs(u.created)} /><Row k="Last sign-in" v={fmtMs(u.lastSignIn)} />
+        <Row k="Last token refresh (≈ last active)" v={fmtMs(u.lastRefresh)} /><Row k="Sign-in methods" v={u.providers.join(", ") || "—"} />
+        <Row k="Address" v={u.address || "—"} /><Row k="Location" v={u.location ? `${u.location.lat.toFixed(4)}, ${u.location.lng.toFixed(4)}` : "Not shared"} />
+        <Row k="Gender / favourite pet" v={`${u.gender || "—"} / ${u.favoritePet || "—"}`} />
+        <Row k="Reports against user" v={<>{u.reportCount} {u.disabled && <Badge tone="danger">Account disabled</Badge>}</>} />
       </dl>
-
       <section>
         <h2 className="mb-2 font-semibold">Pets ({u.pets.length})</h2>
-        {u.pets.length === 0 ? <p className="text-sm text-slate-500">No pets listed.</p> : (
-          <ul className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-            {u.pets.map((p) => (
-              <li key={p.id} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {p.photo ? <img src={p.photo} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <div className="h-14 w-14 rounded-lg bg-slate-200" />}
-                <div className="text-sm"><div className="font-medium">{p.name || "(unnamed)"}</div><div className="text-xs capitalize text-slate-500">{p.category} · {p.status}</div></div>
-              </li>
-            ))}
-          </ul>
-        )}
+        {u.pets.length === 0 ? <p className="text-sm text-muted">No pets listed.</p> : (
+          <ul className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">{u.pets.map((p) => (
+            <li key={p.id} className="flex gap-3 rounded-xl border border-border bg-surface p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {p.photo ? <img src={p.photo} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <div className="h-14 w-14 rounded-lg bg-surface-2" />}
+              <div className="text-sm"><div className="font-medium">{p.name || "(unnamed)"}</div><div className="text-xs capitalize text-muted">{p.category} · {p.status}</div></div>
+            </li>))}</ul>)}
       </section>
-
       <section>
         <h2 className="mb-2 font-semibold">Adoption requests ({u.adoptionRequests.length})</h2>
-        {u.adoptionRequests.length === 0 ? <p className="text-sm text-slate-500">None.</p> : (
-          <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white text-sm">
-            {u.adoptionRequests.map((r) => (
-              <li key={r.id} className="flex justify-between p-3"><span className="capitalize">{r.direction} · {r.status}</span><span className="text-slate-500">{fmtMs(r.at)}</span></li>
-            ))}
-          </ul>
-        )}
+        {u.adoptionRequests.length === 0 ? <p className="text-sm text-muted">None.</p> : (
+          <ul className="divide-y divide-border rounded-xl border border-border bg-surface text-sm">{u.adoptionRequests.map((r) => (
+            <li key={r.id} className="flex justify-between p-3"><span className="capitalize">{r.direction} · {r.status}</span><span className="text-muted">{fmtMs(r.at)}</span></li>))}</ul>)}
       </section>
     </div>
   );

@@ -1,35 +1,14 @@
 import { Timestamp, type DocumentReference } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "./admin";
+import type { GeoUser, PetRow, UserTuple } from "../shared";
 
 // Day buckets use this offset from UTC (default IST +05:30).
-const TZ_MIN = Number(process.env.ADMIN_TZ_OFFSET_MIN ?? 330);
+export const TZ_MIN = Number(process.env.ADMIN_TZ_OFFSET_MIN ?? 330);
 export const dayKey = (ms: number) => new Date(ms + TZ_MIN * 60_000).toISOString().slice(0, 10);
-export const DAY = 86_400_000;
-const TTL = 5 * 60_000;
 
-function cached<T>(load: () => Promise<T>) {
-  let v: { at: number; data: Promise<T> } | null = null;
-  return (force = false) => {
-    if (force || !v || Date.now() - v.at > TTL) {
-      const p = load();
-      v = { at: Date.now(), data: p };
-      p.catch(() => (v = null));
-    }
-    return v!.data;
-  };
-}
-
-export interface AuthRow {
-  uid: string;
-  email: string;
-  name: string;
-  created: number;
-  lastSeen: number; // max(last token refresh, last sign-in) – approximate "last active"
-  disabled: boolean;
-}
-
-export const loadAuthUsers = cached(async (): Promise<AuthRow[]> => {
-  const rows: AuthRow[] = [];
+/** All Auth users as compact tuples. lastSeen = max(token refresh, sign-in, created). */
+export async function fetchAuthUsers(): Promise<UserTuple[]> {
+  const rows: UserTuple[] = [];
   let token: string | undefined;
   do {
     const page = await adminAuth().listUsers(1000, token);
@@ -37,45 +16,32 @@ export const loadAuthUsers = cached(async (): Promise<AuthRow[]> => {
       const created = Date.parse(u.metadata.creationTime) || 0;
       const signIn = Date.parse(u.metadata.lastSignInTime) || 0;
       const refresh = Date.parse(u.metadata.lastRefreshTime ?? "") || 0;
-      rows.push({
-        uid: u.uid,
-        email: u.email ?? "",
-        name: u.displayName ?? "",
-        created,
-        lastSeen: Math.max(signIn, refresh, created),
-        disabled: u.disabled,
-      });
+      rows.push([u.uid, u.email ?? "", u.displayName ?? "", created, Math.max(signIn, refresh, created), u.disabled ? 1 : 0]);
     }
     token = page.pageToken;
   } while (token);
   return rows;
-});
+}
 
 const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : 0);
 const rid = (r: unknown) => (r && typeof r === "object" && "id" in r ? (r as DocumentReference).id : "");
 
-export interface PetRow {
-  id: string;
-  name: string;
-  category: string;
-  status: string;
-  gender: string;
-  owner: string;
-  photo: string;
-  created: number;
-}
-export interface Engagement {
+export interface RawEngagement {
   pets: PetRow[];
   petCount: Map<string, number>;
   engaged: Set<string>;
+  likedUsers: Set<string>;
+  chattedUsers: Set<string>;
+  requestedUsers: Set<string>;
+  approvedUsers: Set<string>;
   likes: number[];
   chats: number[];
   requests: { at: number; status: string }[];
   posts: number[];
-  chatCount: number;
 }
 
-export const loadEngagement = cached(async (): Promise<Engagement> => {
+/** Small collections (a few hundred docs each) – read once per bundle build. */
+export async function fetchEngagement(): Promise<RawEngagement> {
   const db = adminDb();
   const [pets, likes, chats, reqs, posts] = await Promise.all([
     db.collection("Pets").select("name", "category", "adoption_status", "gender", "owner_ref", "pet_medias").get(),
@@ -104,35 +70,29 @@ export const loadEngagement = cached(async (): Promise<Engagement> => {
       created: d.createTime?.toMillis() ?? 0,
     };
   });
-  likes.docs.forEach((d) => engaged.add(rid(d.get("user_ref"))));
-  chats.docs.forEach((d) => (d.get("participants") ?? []).forEach((r: unknown) => engaged.add(rid(r))));
+  const likedUsers = new Set<string>(), chattedUsers = new Set<string>(), requestedUsers = new Set<string>(), approvedUsers = new Set<string>();
+  likes.docs.forEach((d) => likedUsers.add(rid(d.get("user_ref"))));
+  chats.docs.forEach((d) => (d.get("participants") ?? []).forEach((r: unknown) => chattedUsers.add(rid(r))));
   reqs.docs.forEach((d) => {
+    requestedUsers.add(rid(d.get("user_id")));
+    if (d.get("status") === "Approved") approvedUsers.add(rid(d.get("user_id")));
     engaged.add(rid(d.get("user_id")));
     engaged.add(rid(d.get("owner_id")));
   });
   posts.docs.forEach((d) => engaged.add(rid(d.get("user"))));
-  engaged.delete("");
+  [likedUsers, chattedUsers].forEach((s) => s.forEach((u) => engaged.add(u)));
+  [engaged, likedUsers, chattedUsers, requestedUsers, approvedUsers].forEach((s) => s.delete(""));
   return {
-    pets: petRows,
-    petCount,
-    engaged,
+    pets: petRows, petCount, engaged, likedUsers, chattedUsers, requestedUsers, approvedUsers,
     likes: likes.docs.map((d) => ms(d.get("created_at"))),
     chats: chats.docs.map((d) => ms(d.get("created_at"))),
     requests: reqs.docs.map((d) => ({ at: ms(d.get("requested_at")), status: d.get("status") ?? "" })),
     posts: posts.docs.map((d) => ms(d.get("created_at"))),
-    chatCount: chats.size,
   };
-});
-
-export interface GeoUser {
-  uid: string;
-  name: string;
-  address: string;
-  lat: number;
-  lng: number;
 }
-/** Only ~2% of users have a stored location; this is the set location filters operate on. */
-export const loadGeoUsers = cached(async (): Promise<GeoUser[]> => {
+
+/** Only ~2% of users have a stored location. */
+export async function fetchGeoUsers(): Promise<GeoUser[]> {
   const s = await adminDb().collection("Users").where("location", "!=", null).select("display_name", "Address", "location").get();
   return s.docs.map((d) => ({
     uid: d.id,
@@ -141,11 +101,4 @@ export const loadGeoUsers = cached(async (): Promise<GeoUser[]> => {
     lat: d.get("location")?.latitude ?? 0,
     lng: d.get("location")?.longitude ?? 0,
   }));
-});
-
-export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const R = 6371, rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(x));
 }

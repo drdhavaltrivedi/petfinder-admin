@@ -85,6 +85,17 @@ export async function listPosts(category: Category | "all", after?: QueryDocumen
   };
 }
 
+// All posts are loaded once (the collection is small) and filtered/paged in the browser.
+let postsCache: { at: number; data: PostDoc[] } | null = null;
+export const invalidatePosts = () => { postsCache = null; };
+export async function listAllPosts(force = false): Promise<PostDoc[]> {
+  if (!force && postsCache && Date.now() - postsCache.at < 10 * 60_000) return postsCache.data;
+  const snap = await getDocs(query(collection(db, "Post").withConverter(postConverter), orderBy("created_at", "desc"), limit(500)));
+  const data = snap.docs.map((d) => d.data());
+  postsCache = { at: Date.now(), data };
+  return data;
+}
+
 export async function getPost(id: string): Promise<PostDoc | null> {
   const s = await getDoc(doc(db, "Post", id).withConverter(postConverter));
   return s.exists() ? s.data() : null;
@@ -117,6 +128,7 @@ export interface PostInput {
 
 export async function createPost(input: PostInput, photoUrl: string) {
   if (!OFFICIAL_AUTHOR_UID) throw new Error("NEXT_PUBLIC_OFFICIAL_AUTHOR_UID is not set.");
+  invalidatePosts();
   return addDoc(collection(db, "Post"), {
     caption: input.caption,
     photo_url: photoUrl,
@@ -133,6 +145,7 @@ export async function createPost(input: PostInput, photoUrl: string) {
 
 /** Counters, author and created_at are deliberately NOT written here. */
 export async function updatePost(id: string, input: PostInput, photoUrl?: string) {
+  invalidatePosts();
   await updateDoc(doc(db, "Post", id), {
     caption: input.caption,
     category: input.category,
@@ -141,4 +154,4 @@ export async function updatePost(id: string, input: PostInput, photoUrl?: string
   });
 }
 
-export const deletePost = (id: string) => deleteDoc(doc(db, "Post", id));
+export const deletePost = (id: string) => { invalidatePosts(); return deleteDoc(doc(db, "Post", id)); };

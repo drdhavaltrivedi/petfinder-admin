@@ -54,10 +54,10 @@ export default function PostForm({ initial, imageRequired, submitLabel, busyLabe
   return (
     <div className="grid gap-8 lg:grid-cols-2">
       <form onSubmit={submit} className="space-y-5">
-        <div className="flex items-center gap-3 rounded-lg bg-slate-100 p-3">
+        <div className="flex items-center gap-3 rounded-lg bg-surface-2 p-3">
           <Avatar url={author?.photo_url} name={author?.display_name} />
           <div className="text-sm">
-            <div className="text-slate-500">Posting as</div>
+            <div className="text-muted">Posting as</div>
             <div className="font-semibold">
               {author?.display_name || (authorErr ? `Unknown author (${OFFICIAL_AUTHOR_UID})` : "…")}
             </div>
@@ -73,7 +73,7 @@ export default function PostForm({ initial, imageRequired, submitLabel, busyLabe
             maxLength={MAX_CAPTION}
             required
           />
-          <span className="block text-right text-xs text-slate-500">{caption.length}/{MAX_CAPTION}</span>
+          <span className="block text-right text-xs text-muted">{caption.length}/{MAX_CAPTION}</span>
         </label>
 
         <label className="block space-y-1">
@@ -92,7 +92,7 @@ export default function PostForm({ initial, imageRequired, submitLabel, busyLabe
             className={input}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
-          <span className="block text-xs text-slate-500">Resized to max 1080×1080 and converted to JPEG before upload.</span>
+          <span className="block text-xs text-muted">Resized to max 1080×1080 and converted to JPEG before upload.</span>
         </label>
 
         {error && <ErrorBox message={error} />}
@@ -103,18 +103,18 @@ export default function PostForm({ initial, imageRequired, submitLabel, busyLabe
       </form>
 
       <div>
-        <div className="mb-2 text-sm font-medium text-slate-500">Preview</div>
-        <article className="max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="mb-2 text-sm font-medium text-muted">Preview</div>
+        <article className="max-w-sm overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
           <div className="flex items-center gap-2 p-3">
             <Avatar url={author?.photo_url} name={author?.display_name} />
             <span className="text-sm font-semibold">{author?.display_name ?? "Author"}</span>
-            <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs">{category || "Category"}</span>
+            <span className="ml-auto rounded-full bg-surface-2 px-2 py-0.5 text-xs">{category || "Category"}</span>
           </div>
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={preview} alt="" className="aspect-square w-full object-cover" />
           ) : (
-            <div className="grid aspect-square place-items-center bg-slate-100 text-sm text-slate-400">No image</div>
+            <div className="grid aspect-square place-items-center bg-surface-2 text-sm text-muted">No image</div>
           )}
           <p className="whitespace-pre-wrap break-words p-3 text-sm">{caption || "Your caption appears here…"}</p>
         </article>

@@ -47,6 +47,7 @@ export function handle(fn: (req: Request, ctx: unknown) => Promise<unknown>) {
       const body = await fn(req, ctx);
       return Response.json(body, { headers: { "Cache-Control": "private, no-store" } });
     } catch (e) {
+      if ((e as { digest?: string })?.digest) throw e; // Next.js control-flow signals (dynamic usage etc.)
       if (e instanceof HttpError) return Response.json({ error: e.message, ...e.extra }, { status: e.status });
       console.error("admin api error", e instanceof Error ? e.message : e);
       return Response.json({ error: e instanceof Error ? e.message : "Internal error" }, { status: 500 });

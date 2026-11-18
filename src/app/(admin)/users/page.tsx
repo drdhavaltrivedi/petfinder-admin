@@ -1,134 +1,161 @@
 "use client";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { Avatar, Empty, ErrorBox, Spinner, btnGhost, input } from "@/components/ui";
-import { ago, api, fmtDay } from "@/lib/api";
+import { Download, Search, SlidersHorizontal, X, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
+import { Suspense, useMemo, useState } from "react";
+import { BundleGate, DataStatus } from "@/components/DataStatus";
+import { Pagination, paginate } from "@/components/Pagination";
+import { Avatar, Badge, Chip, Drawer, Empty, PageHeader, Spinner, btnGhost, btnPrimary, input } from "@/components/ui";
+import { useBundle } from "@/lib/bundle";
+import { ago, fmtDay } from "@/lib/api";
+import { USER_FILTERS, distanceKm, matchesFilter, type Bundle, type UserTuple } from "@/lib/shared";
+import { useUrlState } from "@/lib/urlstate";
+import { UserQuickView } from "./quick";
 
-interface U { uid: string; email: string; name: string; photo: string; address: string; hasLocation: boolean; created: number; lastSeen: number; pets: number; engaged: boolean; disabled: boolean }
-interface Res { total: number; page: number; pageSize: number; geoNote: string | null; users: U[] }
+const DEFAULTS = { q: "", filter: "all", sort: "created", dir: "desc", page: "1", size: "25", address: "", lat: "", lng: "", radius: "" };
+const SORTS: Record<string, (a: UserTuple, b: UserTuple, pets: Map<string, number>) => number> = {
+  created: (a, b) => a[3] - b[3],
+  lastSeen: (a, b) => a[4] - b[4],
+  email: (a, b) => a[1].localeCompare(b[1]),
+  name: (a, b) => (a[2] || a[1]).localeCompare(b[2] || b[1]),
+  pets: (a, b, p) => (p.get(a[0]) ?? 0) - (p.get(b[0]) ?? 0),
+};
 
-const FILTERS: [string, string][] = [
-  ["all", "All users"], ["new7", "Signed up: last 7 days"], ["new30", "Signed up: last 30 days"], ["active7", "Active: last 7 days"],
-  ["never-engaged", "Never used a feature"], ["never-returned", "Never returned after signup day"], ["inactive30", "Not seen 30+ days"], ["has-pets", "Has listed pets"],
-];
+function Body({ b }: { b: Bundle }) {
+  const { petCount, engaged } = useBundle();
+  const [u, set] = useUrlState(DEFAULTS);
+  const [qDraft, setQDraft] = useState(u.q);
+  const [moreOpen, setMoreOpen] = useState(!!(u.address || u.lat));
+  const [openUid, setOpenUid] = useState<string | null>(null);
+  const [now] = useState(() => Date.now());
+  const ctx = useMemo(() => ({ now, engaged, petCount }), [now, engaged, petCount]);
+  const geoByUid = useMemo(() => new Map(b.geo.map((g) => [g.uid, g])), [b.geo]);
 
-function UsersInner() {
-  const sp = useSearchParams();
-  const [q, setQ] = useState("");
-  const [filter, setFilter] = useState(sp.get("filter") ?? "all");
-  const [address, setAddress] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
-  const [radius, setRadius] = useState("");
-  const [page, setPage] = useState(1);
-  const [applied, setApplied] = useState({ q: "", filter: sp.get("filter") ?? "all", address: "", lat: "", lng: "", radius: "" });
-  const [data, setData] = useState<Res | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const counts = useMemo(() => Object.fromEntries(USER_FILTERS.map((f) => [f.key, f.key === "all" ? b.users.length : b.users.filter((x) => matchesFilter(f.key, x, ctx)).length])), [b.users, ctx]);
 
-  const params = useCallback((extra: Record<string, string> = {}) => {
-    const p = new URLSearchParams({ filter: applied.filter, ...extra });
-    if (applied.q) p.set("q", applied.q);
-    if (applied.address) p.set("address", applied.address);
-    if (applied.lat && applied.lng && applied.radius) { p.set("lat", applied.lat); p.set("lng", applied.lng); p.set("radius", applied.radius); }
-    return p.toString();
-  }, [applied]);
-
-  useEffect(() => {
-    let live = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    setError(null);
-    api<Res>(`/api/admin/users?${params({ page: String(page) })}`)
-      .then((r) => live && setData(r))
-      .catch((e) => live && setError(`Failed to load users: ${(e as Error).message}`))
-      .finally(() => live && setLoading(false));
-    return () => { live = false; };
-  }, [params, page]);
-
-  function apply(e: React.FormEvent) {
-    e.preventDefault();
-    setPage(1);
-    setApplied({ q: q.trim(), filter, address: address.trim(), lat, lng, radius });
-  }
-
-  async function exportCsv() {
-    try {
-      const r = await api<{ users: { uid: string; email: string; name: string; created: number; lastSeen: number; pets: number; engaged: boolean }[] }>(`/api/admin/users?${params({ all: "1" })}`);
-      const esc = (v: string | number | boolean) => `"${String(v).replace(/"/g, '""')}"`;
-      const rows = [["uid", "email", "name", "signed_up", "last_active", "pets", "used_a_feature"], ...r.users.map((u) => [u.uid, u.email, u.name, new Date(u.created).toISOString(), new Date(u.lastSeen).toISOString(), u.pets, u.engaged])];
-      const url = URL.createObjectURL(new Blob([rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv" }));
-      Object.assign(document.createElement("a"), { href: url, download: `petfinder-users-${new Date().toISOString().slice(0, 10)}.csv` }).click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError(`Export failed: ${(e as Error).message}`);
+  const geoActive = !!u.address || (!!u.lat && !!u.lng && !!u.radius);
+  const rows = useMemo(() => {
+    const q = u.q.trim().toLowerCase();
+    let r = b.users.filter((x) => matchesFilter(u.filter, x, ctx));
+    if (q) r = r.filter((x) => x[1].toLowerCase().includes(q) || x[2].toLowerCase().includes(q) || x[0] === u.q.trim());
+    if (geoActive) {
+      const ok = new Set(b.geo
+        .filter((g) => !u.address || g.address.toLowerCase().includes(u.address.toLowerCase()))
+        .filter((g) => !(u.lat && u.lng && u.radius) || distanceKm({ lat: +u.lat, lng: +u.lng }, g) <= +u.radius)
+        .map((g) => g.uid));
+      r = r.filter((x) => ok.has(x[0]));
     }
+    const cmp = SORTS[u.sort] ?? SORTS.created;
+    const sign = u.dir === "asc" ? 1 : -1;
+    return [...r].sort((a, c) => sign * cmp(a, c, petCount));
+  }, [b, u.q, u.filter, u.sort, u.dir, u.address, u.lat, u.lng, u.radius, geoActive, ctx, petCount]);
+
+  const size = Number(u.size) || 25;
+  const pageRows = paginate(rows, Number(u.page) || 1, size);
+  const reset = (patch: Partial<typeof DEFAULTS>) => set({ ...patch, page: "1" });
+
+  const pills: [string, string, () => void][] = [];
+  if (u.filter !== "all") pills.push(["Filter", USER_FILTERS.find((f) => f.key === u.filter)?.label ?? u.filter, () => reset({ filter: "all" })]);
+  if (u.q) pills.push(["Search", u.q, () => { setQDraft(""); reset({ q: "" }); }]);
+  if (u.address) pills.push(["Address", u.address, () => reset({ address: "" })]);
+  if (u.lat && u.lng && u.radius) pills.push(["Near", `${u.lat}, ${u.lng} · ${u.radius} km`, () => reset({ lat: "", lng: "", radius: "" })]);
+
+  function exportCsv() {
+    const esc = (v: string | number | boolean) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [["uid", "email", "name", "signed_up", "last_active", "pets", "used_a_feature"], ...rows.map((x) => [x[0], x[1], x[2], new Date(x[3]).toISOString(), new Date(x[4]).toISOString(), petCount.get(x[0]) ?? 0, engaged.has(x[0])])];
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l.map(esc).join(",")).join("\n")], { type: "text/csv" }));
+    Object.assign(document.createElement("a"), { href: url, download: `petfinder-users-${new Date().toISOString().slice(0, 10)}.csv` }).click();
+    URL.revokeObjectURL(url);
   }
 
-  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const th = (k: string, children: React.ReactNode) => {
+    const on = u.sort === k;
+    return (
+      <th key={k} className="p-3 font-medium" aria-sort={on ? (u.dir === "asc" ? "ascending" : "descending") : "none"}>
+        <button className="inline-flex items-center gap-1 hover:text-fg" onClick={() => set({ sort: k, dir: on && u.dir === "desc" ? "asc" : "desc", page: "1" })}>
+          {children}{on ? (u.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ChevronsUpDown className="h-3 w-3 opacity-40" />}
+        </button>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold">Users {data && <span className="text-sm font-normal text-slate-500">({data.total.toLocaleString()})</span>}</h1>
-        <button className={`${btnGhost} ml-auto`} onClick={exportCsv}>Export CSV</button>
+      <div className="flex flex-wrap items-center gap-2">
+        <form className="relative min-w-60 flex-1" onSubmit={(e) => { e.preventDefault(); reset({ q: qDraft.trim() }); }}>
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
+          <input className={`${input} pl-9`} placeholder="Search email, name or uid — press Enter" value={qDraft} onChange={(e) => setQDraft(e.target.value)} onBlur={() => qDraft.trim() !== u.q && reset({ q: qDraft.trim() })} />
+        </form>
+        <button className={btnGhost} onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen}><SlidersHorizontal className="h-4 w-4" />Location</button>
+        <button className={btnGhost} onClick={exportCsv} disabled={!rows.length}><Download className="h-4 w-4" />Export {rows.length.toLocaleString()}</button>
       </div>
 
-      <form onSubmit={apply} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-4">
-        <input className={`${input} md:col-span-2`} placeholder="Search email, name or uid" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className={input} value={filter} onChange={(e) => setFilter(e.target.value)}>{FILTERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-        <input className={input} placeholder="Address contains (e.g. Mumbai)" value={address} onChange={(e) => setAddress(e.target.value)} />
-        <input className={input} placeholder="Near latitude" value={lat} onChange={(e) => setLat(e.target.value)} inputMode="decimal" />
-        <input className={input} placeholder="Near longitude" value={lng} onChange={(e) => setLng(e.target.value)} inputMode="decimal" />
-        <input className={input} placeholder="Radius (km)" value={radius} onChange={(e) => setRadius(e.target.value)} inputMode="decimal" />
-        <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">Apply</button>
-      </form>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        {USER_FILTERS.map((f) => <Chip key={f.key} active={u.filter === f.key} count={counts[f.key]} onClick={() => reset({ filter: f.key })}>{f.label}</Chip>)}
+      </div>
 
-      {data?.geoNote && <p className="text-xs text-amber-700">{data.geoNote}</p>}
-      {error && <ErrorBox message={error} />}
-      {loading && <Spinner label="Loading users (first load can take ~30s)…" />}
-      {!loading && !error && data?.users.length === 0 && <Empty>No users match these filters.</Empty>}
-
-      {data && data.users.length > 0 && (
-        <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white ${loading ? "opacity-50" : ""}`}>
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500">
-              <tr><th className="p-3">User</th><th>Signed up</th><th>Last active</th><th>Pets</th><th>Address</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {data.users.map((u) => (
-                <tr key={u.uid} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="p-3">
-                    <Link href={`/users/${u.uid}`} className="flex items-center gap-2">
-                      <Avatar url={u.photo} name={u.name || u.email} />
-                      <span className="min-w-0"><span className="block truncate font-medium">{u.name || "—"}</span><span className="block truncate text-xs text-slate-500">{u.email || u.uid}</span></span>
-                    </Link>
-                  </td>
-                  <td className="whitespace-nowrap">{fmtDay(u.created)}</td>
-                  <td className="whitespace-nowrap">{ago(u.lastSeen)}</td>
-                  <td>{u.pets}</td>
-                  <td className="max-w-48 truncate">{u.address || "—"}</td>
-                  <td>{u.disabled ? <span className="text-red-600">Disabled</span> : u.engaged ? "Engaged" : <span className="text-amber-700">No activity</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {moreOpen && (
+        <div className="grid gap-2 rounded-xl border border-border bg-surface p-3 md:grid-cols-4">
+          <p className="text-xs text-muted md:col-span-4">Only <b>{b.geo.length}</b> of {b.users.length.toLocaleString()} users have a stored location, so these filters match that small group.</p>
+          <input className={input} placeholder="Address contains…" value={u.address} onChange={(e) => reset({ address: e.target.value })} />
+          <input className={input} placeholder="Near latitude" inputMode="decimal" value={u.lat} onChange={(e) => reset({ lat: e.target.value })} />
+          <input className={input} placeholder="Near longitude" inputMode="decimal" value={u.lng} onChange={(e) => reset({ lng: e.target.value })} />
+          <input className={input} placeholder="Radius (km)" inputMode="decimal" value={u.radius} onChange={(e) => reset({ radius: e.target.value })} />
         </div>
       )}
 
-      {data && pages > 1 && (
-        <div className="flex items-center justify-center gap-3 text-sm">
-          <button className={btnGhost} disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>Previous</button>
-          <span>Page {page} of {pages.toLocaleString()}</span>
-          <button className={btnGhost} disabled={page >= pages || loading} onClick={() => setPage(page + 1)}>Next</button>
-        </div>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium tabular-nums">{rows.length.toLocaleString()} users</span>
+        {pills.map(([k, v, rm]) => (
+          <span key={k} className="inline-flex items-center gap-1 rounded-full bg-surface-2 py-1 pl-3 pr-1.5 text-xs"><span className="text-muted">{k}:</span> {v}
+            <button onClick={rm} aria-label={`Remove ${k} filter`} className="rounded-full p-0.5 hover:bg-border"><X className="h-3 w-3" /></button></span>
+        ))}
+        {pills.length > 1 && <button className="text-xs text-accent underline" onClick={() => { setQDraft(""); set({ ...DEFAULTS, size: u.size }); }}>Clear all</button>}
+      </div>
+
+      {rows.length === 0 ? <Empty action={<button className={btnPrimary} onClick={() => { setQDraft(""); set({ ...DEFAULTS, size: u.size }); }}>Clear filters</button>}>No users match these filters.</Empty> : (
+        <>
+          <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 bg-surface-2 text-xs text-muted">
+                <tr>{th("name", "User")}{th("created", "Signed up")}{th("lastSeen", "Last active")}{th("pets", "Pets")}<th className="p-3 font-medium">Address</th><th className="p-3 font-medium">Status</th></tr>
+              </thead>
+              <tbody>
+                {pageRows.map((x) => (
+                  <tr key={x[0]} onClick={() => setOpenUid(x[0])} className="cursor-pointer border-t border-border hover:bg-surface-2">
+                    <td className="p-3"><div className="flex items-center gap-3"><Avatar name={x[2] || x[1]} /><div className="min-w-0"><div className="truncate font-medium">{x[2] || "—"}</div><div className="truncate text-xs text-muted">{x[1] || x[0]}</div></div></div></td>
+                    <td className="whitespace-nowrap p-3 text-muted">{fmtDay(x[3])}</td>
+                    <td className="whitespace-nowrap p-3 text-muted">{ago(x[4])}</td>
+                    <td className="p-3 tabular-nums">{petCount.get(x[0]) ?? 0}</td>
+                    <td className="max-w-52 truncate p-3 text-muted">{geoByUid.get(x[0])?.address || "—"}</td>
+                    <td className="p-3">{x[5] ? <Badge tone="danger">Disabled</Badge> : engaged.has(x[0]) ? <Badge tone="success">Engaged</Badge> : <Badge tone="warn">No activity</Badge>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="space-y-2 md:hidden">
+            {pageRows.map((x) => (
+              <li key={x[0]}><button onClick={() => setOpenUid(x[0])} className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-3 text-left">
+                <Avatar name={x[2] || x[1]} /><div className="min-w-0 flex-1"><div className="truncate font-medium">{x[2] || x[1]}</div><div className="truncate text-xs text-muted">{x[2] ? x[1] + " · " : ""}joined {fmtDay(x[3])} · {ago(x[4])}</div></div>
+                {engaged.has(x[0]) ? <Badge tone="success">Engaged</Badge> : <Badge tone="warn">None</Badge>}</button></li>
+            ))}
+          </ul>
+          <Pagination page={Number(u.page) || 1} size={size} total={rows.length} onPage={(p) => set({ page: String(p) })} onSize={(s) => set({ size: String(s), page: "1" })} />
+        </>
       )}
+
+      <Drawer open={!!openUid} onClose={() => setOpenUid(null)} title="User">
+        {openUid && <UserQuickView uid={openUid} base={b.users.find((x) => x[0] === openUid)} />}
+      </Drawer>
     </div>
   );
 }
 
 export default function UsersPage() {
-  return <Suspense fallback={<Spinner />}><UsersInner /></Suspense>;
+  return (
+    <>
+      <PageHeader title="Users" sub="Search, filter and export. Everything here runs on the cached data, with no API calls." actions={<DataStatus />} />
+      <Suspense fallback={<Spinner />}><BundleGate>{(b) => <Body b={b} />}</BundleGate></Suspense>
+    </>
+  );
 }

@@ -53,3 +53,15 @@ Images upload to `users/{signedInUid}/uploads/{Date.now()}.jpg`.
 ## Deploy
 **Vercel:** import the repo, add the `NEXT_PUBLIC_*` variables (Production + Preview), deploy. Then in Firebase Auth → Settings → *Authorized domains* add your Vercel domain.
 **Firebase Hosting:** use the Next.js framework-aware hosting (`firebase init hosting`, choose the web frameworks option) and deploy with `firebase deploy --only hosting` – never `--only firestore:rules`.
+
+## Data & caching (how the dashboard avoids API calls)
+* `GET /api/admin/bundle` (admin-only) builds one compact dataset – every user (uid, email, name, signup, last active), pets, locations and
+  precomputed dashboard stats (~1 MB gzipped). The first build reads all Auth users and takes ~25 s.
+* The browser stores the bundle in IndexedDB for **48 hours**. Dashboard, Users, Pets and the Connect pickers filter, sort, count and
+  paginate locally with **no API calls**. The **Refresh** button (or expiry after 48 h) rebuilds it. Signing out clears it.
+* Only these are live calls: a single user's profile (cached 5 min), recent adoption requests/chats, and creating a connection.
+* Posts are loaded once through the Firestore client SDK (cached 10 min) and paged locally.
+* No cron job and no extra Firestore collection is used.
+
+### Extra environment variables for the server routes
+`FIREBASE_SERVICE_ACCOUNT_JSON` (Vercel, Sensitive) or `GOOGLE_APPLICATION_CREDENTIALS` (local path), optional `ADMIN_TZ_OFFSET_MIN` (default 330).

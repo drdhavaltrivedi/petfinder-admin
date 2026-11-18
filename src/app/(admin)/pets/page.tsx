@@ -1,65 +1,82 @@
 "use client";
 
+import { Search } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Empty, ErrorBox, Spinner, btnGhost, input } from "@/components/ui";
-import { api, fmtDay } from "@/lib/api";
+import { Suspense, useMemo, useState } from "react";
+import { BundleGate, DataStatus } from "@/components/DataStatus";
+import { Pagination, paginate } from "@/components/Pagination";
+import { Badge, Chip, Empty, PageHeader, Spinner, input } from "@/components/ui";
+import { fmtDay } from "@/lib/api";
+import type { Bundle } from "@/lib/shared";
+import { useUrlState } from "@/lib/urlstate";
 
-interface P { id: string; name: string; category: string; status: string; gender: string; owner: string; ownerEmail: string; ownerName: string; photo: string; created: number }
-interface Res { total: number; page: number; pageSize: number; pets: P[] }
+const DEFAULTS = { q: "", type: "", status: "", page: "1", size: "24" };
+const normStatus = (s: string) => (s === "Deactive" ? "Deactivated" : s); // the app stores both spellings
 
-export default function PetsPage() {
-  const [q, setQ] = useState(""); const [owner, setOwner] = useState(""); const [category, setCategory] = useState(""); const [status, setStatus] = useState("");
-  const [applied, setApplied] = useState({ q: "", owner: "", category: "", status: "" });
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<Res | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function Body({ b }: { b: Bundle }) {
+  const [u, set] = useUrlState(DEFAULTS);
+  const [q, setQ] = useState(u.q);
+  const owners = useMemo(() => new Map(b.users.map((x) => [x[0], x])), [b.users]);
 
-  useEffect(() => {
-    let live = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true); setError(null);
-    const p = new URLSearchParams({ page: String(page), ...Object.fromEntries(Object.entries(applied).filter(([, v]) => v)) });
-    api<Res>(`/api/admin/pets?${p}`).then((r) => live && setData(r)).catch((e) => live && setError(`Failed to load pets: ${(e as Error).message}`)).finally(() => live && setLoading(false));
-    return () => { live = false; };
-  }, [applied, page]);
+  const base = useMemo(() => {
+    const t = u.q.trim().toLowerCase();
+    return b.pets.filter((p) => {
+      if (!t) return true;
+      const o = owners.get(p.owner);
+      return p.name.toLowerCase().includes(t) || !!o?.[1].toLowerCase().includes(t) || !!o?.[2].toLowerCase().includes(t);
+    });
+  }, [b.pets, owners, u.q]);
+  const count = (f: (p: (typeof base)[number]) => boolean) => base.filter(f).length;
+  const rows = base.filter((p) => (!u.type || p.category === u.type) && (!u.status || normStatus(p.status) === u.status)).sort((a, c) => c.created - a.created);
 
-  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const size = Number(u.size) || 24;
+  const reset = (patch: Partial<typeof DEFAULTS>) => set({ ...patch, page: "1" });
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Pets {data && <span className="text-sm font-normal text-slate-500">({data.total})</span>}</h1>
-      <form onSubmit={(e) => { e.preventDefault(); setPage(1); setApplied({ q, owner, category, status }); }} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-5">
-        <input className={input} placeholder="Pet name" value={q} onChange={(e) => setQ(e.target.value)} />
-        <input className={input} placeholder="Owner email / name / uid" value={owner} onChange={(e) => setOwner(e.target.value)} />
-        <select className={input} value={category} onChange={(e) => setCategory(e.target.value)}><option value="">All types</option><option value="dog">Dog</option><option value="cat">Cat</option><option value="bird">Bird</option></select>
-        <select className={input} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>Active</option><option>Deactivated</option><option>Deactive</option></select>
-        <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">Apply</button>
+      <form className="relative max-w-md" onSubmit={(e) => { e.preventDefault(); reset({ q: q.trim() }); }}>
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
+        <input className={`${input} pl-9`} placeholder="Search pet name or owner — press Enter" value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => q.trim() !== u.q && reset({ q: q.trim() })} />
       </form>
-      {error && <ErrorBox message={error} />}
-      {loading && <Spinner label="Loading pets…" />}
-      {!loading && !error && data?.pets.length === 0 && <Empty>No pets match.</Empty>}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {data?.pets.map((p) => (
-          <li key={p.id} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {p.photo ? <img src={p.photo} alt="" className="h-16 w-16 rounded-lg object-cover" /> : <div className="h-16 w-16 rounded-lg bg-slate-200" />}
-            <div className="min-w-0 text-sm">
-              <div className="font-medium">{p.name || "(unnamed)"}</div>
-              <div className="text-xs capitalize text-slate-500">{p.category} · {p.gender || "—"} · {p.status}</div>
-              <Link href={`/users/${p.owner}`} className="block truncate text-xs text-slate-600 hover:underline">{p.ownerName || p.ownerEmail || p.owner}</Link>
-              <div className="text-xs text-slate-400">Listed {fmtDay(p.created)}</div>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {data && pages > 1 && (
-        <div className="flex items-center justify-center gap-3 text-sm">
-          <button className={btnGhost} disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
-          <span>Page {page} of {pages}</span>
-          <button className={btnGhost} disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button>
-        </div>
+      <div className="flex flex-wrap gap-2">
+        <Chip active={!u.type} count={base.length} onClick={() => reset({ type: "" })}>All types</Chip>
+        {["dog", "cat", "bird"].map((t) => <Chip key={t} active={u.type === t} count={count((p) => p.category === t)} onClick={() => reset({ type: t })}><span className="capitalize">{t}</span></Chip>)}
+        <span className="mx-1 w-px bg-border" />
+        <Chip active={!u.status} onClick={() => reset({ status: "" })}>Any status</Chip>
+        {["Active", "Deactivated"].map((s) => <Chip key={s} active={u.status === s} count={count((p) => normStatus(p.status) === s)} onClick={() => reset({ status: s })}>{s}</Chip>)}
+      </div>
+
+      {rows.length === 0 ? <Empty>No pets match these filters.</Empty> : (
+        <>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {paginate(rows, Number(u.page) || 1, size).map((p) => {
+              const o = owners.get(p.owner);
+              return (
+                <li key={p.id} className="flex gap-3 rounded-xl border border-border bg-surface p-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {p.photo ? <img src={p.photo} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-lg bg-surface-2 object-cover" /> : <div className="h-20 w-20 shrink-0 rounded-lg bg-surface-2" />}
+                  <div className="min-w-0 text-sm">
+                    <div className="truncate font-medium">{p.name || "(unnamed)"}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-1"><Badge>{p.category}</Badge>{p.gender && <Badge>{p.gender}</Badge>}<Badge tone={normStatus(p.status) === "Active" ? "success" : "neutral"}>{normStatus(p.status)}</Badge></div>
+                    <Link href={`/users/${p.owner}`} className="mt-1 block truncate text-xs text-muted hover:underline">{o?.[2] || o?.[1] || p.owner}</Link>
+                    <div className="text-xs text-muted">Listed {fmtDay(p.created)}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <Pagination page={Number(u.page) || 1} size={size} total={rows.length} onPage={(p) => set({ page: String(p) })} onSize={(s) => set({ size: String(s), page: "1" })} />
+        </>
       )}
     </div>
+  );
+}
+
+export default function PetsPage() {
+  return (
+    <>
+      <PageHeader title="Pets" sub="Every listed pet, from the cached data" actions={<DataStatus />} />
+      <Suspense fallback={<Spinner />}><BundleGate>{(b) => <Body b={b} />}</BundleGate></Suspense>
+    </>
   );
 }
