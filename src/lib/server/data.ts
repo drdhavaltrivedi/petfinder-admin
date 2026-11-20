@@ -1,6 +1,6 @@
 import { Timestamp, type DocumentReference } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "./admin";
-import type { GeoUser, PetRow, UserTuple } from "../shared";
+import { F, type GeoUser, type PetRow, type UserTuple } from "../shared";
 
 // Day buckets use this offset from UTC (default IST +05:30).
 export const TZ_MIN = Number(process.env.ADMIN_TZ_OFFSET_MIN ?? 330);
@@ -16,7 +16,9 @@ export async function fetchAuthUsers(): Promise<UserTuple[]> {
       const created = Date.parse(u.metadata.creationTime) || 0;
       const signIn = Date.parse(u.metadata.lastSignInTime) || 0;
       const refresh = Date.parse(u.metadata.lastRefreshTime ?? "") || 0;
-      rows.push([u.uid, u.email ?? "", u.displayName ?? "", created, Math.max(signIn, refresh, created), u.disabled ? 1 : 0]);
+      const ids = u.providerData.map((p) => p.providerId);
+      const method = ids.includes("apple.com") ? 0 : ids.includes("google.com") ? 1 : ids.includes("password") ? 2 : 3;
+      rows.push([u.uid, u.email ?? "", u.displayName ?? "", created, Math.max(signIn, refresh, created), u.disabled ? 1 : 0, u.emailVerified ? F.VERIFIED : 0, method]);
     }
     token = page.pageToken;
   } while (token);
@@ -38,6 +40,7 @@ export interface RawEngagement {
   chats: number[];
   requests: { at: number; status: string }[];
   posts: number[];
+  postedUsers: Set<string>;
 }
 
 /** Small collections (a few hundred docs each) – read once per bundle build. */
@@ -79,7 +82,9 @@ export async function fetchEngagement(): Promise<RawEngagement> {
     engaged.add(rid(d.get("user_id")));
     engaged.add(rid(d.get("owner_id")));
   });
-  posts.docs.forEach((d) => engaged.add(rid(d.get("user"))));
+  const postedUsers = new Set<string>();
+  posts.docs.forEach((d) => { engaged.add(rid(d.get("user"))); postedUsers.add(rid(d.get("user"))); });
+  postedUsers.delete("");
   [likedUsers, chattedUsers].forEach((s) => s.forEach((u) => engaged.add(u)));
   [engaged, likedUsers, chattedUsers, requestedUsers, approvedUsers].forEach((s) => s.delete(""));
   return {
@@ -88,6 +93,7 @@ export async function fetchEngagement(): Promise<RawEngagement> {
     chats: chats.docs.map((d) => ms(d.get("created_at"))),
     requests: reqs.docs.map((d) => ({ at: ms(d.get("requested_at")), status: d.get("status") ?? "" })),
     posts: posts.docs.map((d) => ms(d.get("created_at"))),
+    postedUsers,
   };
 }
 
@@ -101,4 +107,36 @@ export async function fetchGeoUsers(): Promise<GeoUser[]> {
     lat: d.get("location")?.latitude ?? 0,
     lng: d.get("location")?.longitude ?? 0,
   }));
+}
+
+
+/** Profile / location / report flags per user, from the Users documents (one read each). */
+export async function fetchUserFlags(): Promise<Map<string, number>> {
+  const s = await adminDb().collection("Users").select("display_name", "photo_url", "Gender", "FavoritePet", "location", "viewed_pet", "report_count").get();
+  const m = new Map<string, number>();
+  for (const d of s.docs) {
+    let f = 0;
+    if (d.get("display_name")) f |= F.NAME;
+    if (d.get("photo_url")) f |= F.PHOTO;
+    if (d.get("Gender")) f |= F.GENDER;
+    if (d.get("FavoritePet")) f |= F.FAV;
+    if (d.get("location")) f |= F.LOC;
+    if ((d.get("viewed_pet") ?? []).length) f |= F.VIEWED;
+    if ((d.get("report_count") ?? 0) > 0) f |= F.REPORTED;
+    m.set(d.id, f);
+  }
+  return m;
+}
+
+/** Users with a registered push device, and users who switched notifications off. */
+export async function fetchReach(): Promise<{ push: Set<string>; notifOff: Set<string> }> {
+  const db = adminDb();
+  const [tokens, prefs] = await Promise.all([
+    db.collectionGroup("fcm_tokens").select().get(),
+    db.collectionGroup("Preferences").select("Notification").get(),
+  ]);
+  const push = new Set<string>(), notifOff = new Set<string>();
+  tokens.docs.forEach((d) => { const u = d.ref.parent.parent?.id; if (u) push.add(u); });
+  prefs.docs.forEach((d) => { if (d.get("Notification") === false) { const u = d.ref.parent.parent?.id; if (u) notifOff.add(u); } });
+  return { push, notifOff };
 }

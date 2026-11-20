@@ -52,7 +52,7 @@ export function BundleProvider({ children }: { children: ReactNode }) {
     (async () => {
       const cached = await idbGet<Bundle>(`bundle:${uid}`);
       if (!live) return;
-      if (cached?.v === 1) {
+      if (cached?.v === 2) {
         setBundle(cached);
         setLoading(false);
         if (Date.now() - cached.generatedAt > BUNDLE_TTL) fetchBundle(false); // expired: refresh in background

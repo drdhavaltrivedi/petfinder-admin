@@ -1,6 +1,6 @@
 import { adminDb } from "./admin";
-import { dayKey, fetchAuthUsers, fetchEngagement, fetchGeoUsers, TZ_MIN } from "./data";
-import { DAY, countryFromAddress, type Bundle, type Stats, type UserTuple } from "../shared";
+import { dayKey, fetchAuthUsers, fetchEngagement, fetchGeoUsers, fetchReach, fetchUserFlags, TZ_MIN } from "./data";
+import { DAY, F, countryFromAddress, type Bundle, type Stats, type UserTuple } from "../shared";
 
 // One bundle = everything the panel browses (users, pets, stats). The browser caches it for
 // 48h and does all filtering/paging locally. This server-side copy only dedupes concurrent
@@ -35,13 +35,26 @@ const countBy = <T,>(arr: T[], key: (x: T) => string) => {
 async function build(): Promise<Bundle> {
   const now = Date.now();
   const db = adminDb();
-  const [users, eng, geo, push, reportsPending] = await Promise.all([
+  const [authRows, eng, geo, push, reportsPending, flagMap, reach] = await Promise.all([
     fetchAuthUsers(),
     fetchEngagement(),
     fetchGeoUsers(),
     db.collectionGroup("fcm_tokens").count().get().then((s) => s.data().count),
     db.collection("Reports").where("status", "==", "Pending").count().get().then((s) => s.data().count),
+    fetchUserFlags(),
+    fetchReach(),
   ]);
+  // Pack per-user facts into one bitmask so the browser can filter 20k users instantly.
+  const users: UserTuple[] = authRows.map((u) => {
+    let f = u[6] | (flagMap.get(u[0]) ?? 0);
+    if (eng.likedUsers.has(u[0])) f |= F.LIKED;
+    if (eng.chattedUsers.has(u[0])) f |= F.CHATTED;
+    if (eng.requestedUsers.has(u[0])) f |= F.REQUESTED;
+    if (eng.postedUsers.has(u[0])) f |= F.POSTED;
+    if (reach.push.has(u[0])) f |= F.PUSH;
+    if (reach.notifOff.has(u[0])) f |= F.NOTIF_OFF;
+    return [u[0], u[1], u[2], u[3], u[4], u[5], f, u[7]];
+  });
 
   const created = users.map((u) => u[3]);
   const last = (stamps: number[], days: number, offset = 0) => stamps.filter((t) => now - t >= offset * DAY && now - t < (days + offset) * DAY).length;
@@ -115,5 +128,5 @@ async function build(): Promise<Bundle> {
       .map(([uid, count]) => ({ uid, count, email: email.get(uid)?.[1] ?? "", name: email.get(uid)?.[2] ?? "" })),
   };
 
-  return { v: 1, generatedAt: now, stats, users, geo, pets: eng.pets, engaged: [...eng.engaged] };
+  return { v: 2, generatedAt: now, stats, users, geo, pets: eng.pets, engaged: [...eng.engaged] };
 }
