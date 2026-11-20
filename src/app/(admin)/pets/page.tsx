@@ -56,7 +56,7 @@ function Body({ b }: { b: Bundle }) {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {p.photo ? <img src={p.photo} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-lg bg-surface-2 object-cover" /> : <div className="h-20 w-20 shrink-0 rounded-lg bg-surface-2" />}
                   <div className="min-w-0 text-sm">
-                    <div className="truncate font-medium">{p.name || "(unnamed)"}</div>
+                    <Link href={`/pets/${p.id}`} className="block truncate font-medium hover:underline">{p.name || "(unnamed)"}</Link>
                     <div className="mt-0.5 flex flex-wrap gap-1"><Badge>{p.category}</Badge>{p.gender && <Badge>{p.gender}</Badge>}<Badge tone={normStatus(p.status) === "Active" ? "success" : "neutral"}>{normStatus(p.status)}</Badge></div>
                     <Link href={`/users/${p.owner}`} className="mt-1 block truncate text-xs text-muted hover:underline">{o?.[2] || o?.[1] || p.owner}</Link>
                     <div className="text-xs text-muted">Listed {fmtDay(p.created)}</div>

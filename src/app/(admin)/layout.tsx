@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Link2, Menu, Moon, Newspaper, PawPrint, Smartphone, Sun, Users, LogOut, X } from "lucide-react";
+import { LayoutDashboard, Lightbulb, Link2, Menu, Moon, Newspaper, PawPrint, Smartphone, Sun, Users, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
@@ -10,6 +10,7 @@ import { BundleProvider, clearBundleCache } from "@/lib/bundle";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/users", label: "Users", icon: Users },
   { href: "/pets", label: "Pets", icon: PawPrint },
   { href: "/matches", label: "Connect", icon: Link2 },
