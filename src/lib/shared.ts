@@ -55,7 +55,7 @@ export interface Stats {
 }
 
 export interface Bundle {
-  v: 2;
+  v: 3;
   generatedAt: number;
   stats: Stats;
   users: UserTuple[];

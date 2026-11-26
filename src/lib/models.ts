@@ -30,6 +30,7 @@ export interface PostDoc {
   comments_count: number;
   report_count: number;
   reported_users: DocumentReference[];
+  hidden: boolean;
 }
 
 export interface CommentDoc {
@@ -38,6 +39,8 @@ export interface CommentDoc {
   comment: string;
   created_at: Timestamp | null;
   postid: DocumentReference | null;
+  parent_ref: DocumentReference | null;
+  hidden: boolean;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -92,6 +95,7 @@ export const postConverter: FirestoreDataConverter<PostDoc, DocumentData> = {
       reported_users: Array.isArray(d.reported_users)
         ? d.reported_users.map(ref).filter((r): r is DocumentReference => r !== null)
         : [],
+      hidden: d.hidden === true,
     };
   },
 };
@@ -110,6 +114,8 @@ export const commentConverter: FirestoreDataConverter<CommentDoc, DocumentData> 
       comment: str(d.comment),
       created_at: ts(d.created_at),
       postid: ref(d.postid),
+      parent_ref: ref(d.parent_ref),
+      hidden: d.hidden === true,
     };
   },
 };

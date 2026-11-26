@@ -130,7 +130,14 @@ async function build(excludeTest: boolean): Promise<Insights> {
     weeks.set(w, e);
   }
   const pc = (r: number, e: number) => (e >= 20 ? Math.round((r / e) * 1000) / 10 : null);
-  const retention = [...weeks].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-12).map(([week, e]) => ({ week, users: e.n, d1: pc(e.r1, e.e1), d7: pc(e.r7, e.e7), d30: pc(e.r30, e.e30) }));
+  // Only the latest visit is stored, so "still seen N days after signing up" keeps
+  // rising for weeks. A figure is settled once every user of that week has had the
+  // N days plus four more weeks to come back; until then it reads lower than it will.
+  const settled = (week: string, days: number) => now - (Date.parse(week) + 7 * DAY) >= (days + 28) * DAY;
+  const retention = [...weeks].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-20).map(([week, e]) => ({
+    week, users: e.n, d1: pc(e.r1, e.e1), d7: pc(e.r7, e.e7), d30: pc(e.r30, e.e30),
+    early: { d1: !settled(week, 1), d7: !settled(week, 7), d30: !settled(week, 30) },
+  }));
 
   // ---- Supply
   const petsByCategory: Record<string, number> = {}, petsByStatus: Record<string, number> = {};

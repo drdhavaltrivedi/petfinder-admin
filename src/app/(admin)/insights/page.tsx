@@ -58,12 +58,15 @@ function Stages({ d }: { d: Insights }) {
 }
 
 function Retention({ d }: { d: Insights }) {
-  const cell = (v: number | null) => <td className={v === null ? "text-muted" : v < 5 ? "text-danger" : ""}>{v === null ? "—" : `${v}%`}</td>;
+  const cell = (v: number | null, early: boolean) =>
+    v === null ? <td className="text-muted">—</td>
+      : early ? <td className="italic text-muted" title="Too early to compare: this will still rise.">{v}% ↑</td>
+        : <td className={v < 5 ? "text-danger" : ""}>{v}%</td>;
   return (
-    <Card title="2 · Retention by signup week" note="Share of each week's new users still seen N days after signing up. Based on last sign-in or token refresh, so it is approximate (it slightly over-counts). “—” means too few users or too recent to measure.">
+    <Card title="2 · Retention by signup week" note="Share of each week's new users still seen N days after signing up. Only the latest sign-in or token refresh is stored, so a figure keeps rising for weeks. Grey figures with ↑ are too recent to compare with older weeks; compare only the others. “—” means too few users or too recent to measure.">
       <div className="overflow-x-auto"><table className="w-full text-right text-sm tabular-nums">
         <thead className="text-xs text-muted"><tr className="[&>th]:pb-2 [&>th]:font-medium"><th className="text-left">Week starting</th><th>New users</th><th>Day 1</th><th>Day 7</th><th>Day 30</th></tr></thead>
-        <tbody>{d.retention.map((r) => <tr key={r.week} className="border-t border-border"><td className="py-1.5 text-left text-muted">{r.week}</td><td>{r.users.toLocaleString()}</td>{cell(r.d1)}{cell(r.d7)}{cell(r.d30)}</tr>)}</tbody>
+        <tbody>{d.retention.map((r) => <tr key={r.week} className="border-t border-border"><td className="py-1.5 text-left text-muted">{r.week}</td><td>{r.users.toLocaleString()}</td>{cell(r.d1, r.early.d1)}{cell(r.d7, r.early.d7)}{cell(r.d30, r.early.d30)}</tr>)}</tbody>
       </table></div>
     </Card>
   );

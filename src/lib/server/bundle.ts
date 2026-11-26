@@ -35,7 +35,7 @@ const countBy = <T,>(arr: T[], key: (x: T) => string) => {
 async function build(): Promise<Bundle> {
   const now = Date.now();
   const db = adminDb();
-  const [authRows, eng, geo, push, reportsPending, flagMap, reach] = await Promise.all([
+  const [authRows, eng, geo, push, reportsPending, profiles, reach] = await Promise.all([
     fetchAuthUsers(),
     fetchEngagement(),
     fetchGeoUsers(),
@@ -46,14 +46,15 @@ async function build(): Promise<Bundle> {
   ]);
   // Pack per-user facts into one bitmask so the browser can filter 20k users instantly.
   const users: UserTuple[] = authRows.map((u) => {
-    let f = u[6] | (flagMap.get(u[0]) ?? 0);
+    let f = u[6] | (profiles.flags.get(u[0]) ?? 0);
     if (eng.likedUsers.has(u[0])) f |= F.LIKED;
     if (eng.chattedUsers.has(u[0])) f |= F.CHATTED;
     if (eng.requestedUsers.has(u[0])) f |= F.REQUESTED;
     if (eng.postedUsers.has(u[0])) f |= F.POSTED;
     if (reach.push.has(u[0])) f |= F.PUSH;
     if (reach.notifOff.has(u[0])) f |= F.NOTIF_OFF;
-    return [u[0], u[1], u[2], u[3], u[4], u[5], f, u[7]];
+    // Email sign-ups have no name in Auth, so the profile name comes first.
+    return [u[0], u[1], profiles.names.get(u[0]) ?? u[2], u[3], u[4], u[5], f, u[7]];
   });
 
   const created = users.map((u) => u[3]);
@@ -128,5 +129,5 @@ async function build(): Promise<Bundle> {
       .map(([uid, count]) => ({ uid, count, email: email.get(uid)?.[1] ?? "", name: email.get(uid)?.[2] ?? "" })),
   };
 
-  return { v: 2, generatedAt: now, stats, users, geo, pets: eng.pets, engaged: [...eng.engaged] };
+  return { v: 3, generatedAt: now, stats, users, geo, pets: eng.pets, engaged: [...eng.engaged] };
 }

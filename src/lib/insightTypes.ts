@@ -12,7 +12,7 @@ export interface Insights {
   totals: { users: number; byGroup: Record<Group, number> };
   stages: Stage[];
   timeToLeave: { label: string; count: number }[];
-  retention: { week: string; users: number; d1: number | null; d7: number | null; d30: number | null }[];
+  retention: { week: string; users: number; d1: number | null; d7: number | null; d30: number | null; early: { d1: boolean; d7: boolean; d30: boolean } }[];
   supply: {
     petsByCountry: { country: string; pets: number; users: number }[];
     petsByCategory: Record<string, number>;

@@ -54,12 +54,16 @@ function Body() {
               return (
                 <li key={p.id}>
                   <Link href={`/posts/${p.id}`} className={`flex gap-4 rounded-xl border p-3 transition hover:shadow-md ${reported ? "border-danger/40 bg-danger/10" : "border-border bg-surface"}`}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.photo_url} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-lg bg-surface-2 object-cover" />
+                    {p.photo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.photo_url} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-lg bg-surface-2 object-cover" />
+                    ) : (
+                      <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">No photo</div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-2 break-words text-sm">{p.caption}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                        <Badge>{p.category}</Badge><span>{a?.display_name ?? "Unknown author"}</span>
+                        <Badge>{p.category}</Badge>{p.hidden && <Badge tone="danger">Hidden</Badge>}<span>{a?.display_name ?? "Unknown author"}</span>
                         <span className="inline-flex items-center gap-1"><Heart className="h-3 w-3" />{p.likes_count}</span>
                         <span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />{p.comments_count}</span>
                         <span className={`inline-flex items-center gap-1 ${reported ? "font-semibold text-danger" : ""}`}><Flag className="h-3 w-3" />{p.report_count}</span>

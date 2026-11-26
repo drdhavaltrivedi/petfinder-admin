@@ -110,11 +110,14 @@ export async function fetchGeoUsers(): Promise<GeoUser[]> {
 }
 
 
-/** Profile / location / report flags per user, from the Users documents (one read each). */
-export async function fetchUserFlags(): Promise<Map<string, number>> {
+/** Profile / location / report flags per user, plus the name the app shows, from the Users documents (one read each). */
+export async function fetchUserFlags(): Promise<{ flags: Map<string, number>; names: Map<string, string> }> {
   const s = await adminDb().collection("Users").select("display_name", "photo_url", "Gender", "FavoritePet", "location", "viewed_pet", "report_count").get();
   const m = new Map<string, number>();
+  const names = new Map<string, string>();
   for (const d of s.docs) {
+    const name = d.get("display_name");
+    if (typeof name === "string" && name.trim()) names.set(d.id, name.trim());
     let f = 0;
     if (d.get("display_name")) f |= F.NAME;
     if (d.get("photo_url")) f |= F.PHOTO;
@@ -125,7 +128,7 @@ export async function fetchUserFlags(): Promise<Map<string, number>> {
     if ((d.get("report_count") ?? 0) > 0) f |= F.REPORTED;
     m.set(d.id, f);
   }
-  return m;
+  return { flags: m, names };
 }
 
 /** Users with a registered push device, and users who switched notifications off. */

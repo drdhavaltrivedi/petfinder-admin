@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CommentDoc, PostDoc, UserDoc } from "@/lib/models";
 import { deletePost, describeError, getPost, listComments, resolveAuthors } from "@/lib/posts";
-import { Avatar, Empty, ErrorBox, Spinner, btnDanger, btnGhost, fmtDate } from "@/components/ui";
+import { Avatar, Badge, Empty, ErrorBox, Spinner, btnDanger, btnGhost, fmtDate } from "@/components/ui";
 
 export default function PostDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -61,9 +61,17 @@ export default function PostDetailPage() {
     <div className="space-y-6">
       <Link href="/posts" className="text-sm text-muted hover:underline">← All posts</Link>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={post.photo_url} alt="" className="w-full rounded-2xl bg-surface-2 object-cover" />
+      {post.hidden && (
+        <p className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm">
+          This post is hidden in the app. <Link href="/moderation?tab=hidden" className="underline">Review it in Moderation</Link>.
+        </p>
+      )}
+
+      <div className={`grid gap-6 ${post.photo_url ? "md:grid-cols-2" : "max-w-xl"}`}>
+        {post.photo_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={post.photo_url} alt="" className="w-full rounded-2xl bg-surface-2 object-cover" />
+        )}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Avatar url={author?.photo_url} name={author?.display_name} />
@@ -106,7 +114,7 @@ export default function PostDetailPage() {
               <li key={c.id} className="flex gap-3 rounded-lg border border-border bg-surface p-3">
                 <Avatar url={u?.photo_url} name={u?.display_name} />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium">{u?.display_name ?? "Unknown user"} <span className="ml-2 text-xs font-normal text-muted">{fmtDate(c.created_at)}</span></div>
+                  <div className="text-sm font-medium">{u?.display_name ?? "Unknown user"} <span className="ml-2 text-xs font-normal text-muted">{c.parent_ref ? "Reply · " : ""}{fmtDate(c.created_at)}</span>{c.hidden && <span className="ml-2"><Badge tone="danger">Hidden</Badge></span>}</div>
                   <p className="whitespace-pre-wrap break-words text-sm">{c.comment}</p>
                 </div>
               </li>
